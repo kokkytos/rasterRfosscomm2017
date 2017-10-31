@@ -1,0 +1,326 @@
+---
+title: "Επεξεργασία δεδομένων raster GIS με R"
+subtitle: "FOSSCOM2017"
+author:  "Λιάκος Λεωνίδας, Σταθάκης Δημήτρης"
+abstract: "Η παρουσίαση αφορά επεξεργασία δορυφορικών δεδομένων με R. Συγκεκριμένα περιλαμβάνει τον υπολογισμό του δείκτη Vegetation Adjusted NTL UrbanIndex (VANUI) που βασίζεται στον υπολογισμό του δείκτη βλάστησης NDVI και εικόνες με νυκτερινά φώτα. Το παράδειγμα που θα παρουσιαστεί αφορά υπολογισμό του VANUI για την Αθήνα χρησιμοποιώντας δεδομένα MODIS για τον NDVI και δεδομένα DSMP/OLS για νυχτερινά φώτα."
+keywords: "raster, r, vanui, ndvi, modis, dmsp/ols"
+date: 5/11/2017
+output:
+  pdf_document: 
+    toc: true
+    toc_depth: 2
+    latex_engine: xelatex
+mainfont: Times New Roman
+sansfont: Times New Roman 
+monofont: Times New Roman 
+mathfont: Times New Roman
+language: el-GR
+number_sections: yes
+header-includes:
+  \renewcommand{\contentsname}{Περιεχόμενα}
+  \renewcommand{\abstractname}{Περίληψη}
+---
+
+\pagebreak
+
+# Στόχος του workshop
+
+Στόχος του τρέχοντος εργαστηρίου είναι εξοικοίωση του χρήστη με την επεξεργασια δεδομένων *raster* στην R μέσω του υπολογισμού του δείκτη *VANUI (Vegetation Adjusted NTL Urban Index)*[^vanui].
+
+## Ο δείκτης VANUI
+
+Ο δείκτης *VANUI* συνδυάζει τον *δείκτη Βλάστησης Κανονικοποιημένων Διαφορών (NDVI)* και δεδομένα νυχτερινών φωτών (*Night Time Lights*) και στοχεύει να αντιμετωπίσει τις αδυναμίες που εμφανίζουν τα *NTL* στην αναγνώριση του δομημένου αστικού περιβάλλοντος. Τα *NTL* εμφανίζουν κορεσμό των τιμών στον αστικό πυρήνα και περιορισμένη αναγνώριση ποικιλομορφίας στο αστικό περιβάλλον. Με τον δείκτη *VANUI* επιτυγχάνεται ο περιορισμός του κορεσμού των τιμών στον αστικό πυρήνα, ο εντοπισμός διακυμάνσεων στο αστικό περιβάλλον και η ταύτιση του δείκτη με βιοφυσικά και αστικά χαρακτηριστικά.
+
+Ο μαθηματικός τύπος για τον υπολογισμό του δείκτη *VANUI* είναι:
+
+$$VANUI = (1-NDVI) * NTL$$
+όπου,
+
+*NDVI*, o Δείκτης Βλάστησης Κανονικοποιημένων Διαφορών
+
+*NTL*, τα Νυχτερινά Φώτα 
+
+Για τον δείκτη *NDVI* θα χρησιμοποιήσουμε τα δεδομένα από το προιόντα του ραδιόμετρου *MODIS*.
+
+Για τα Νυχτερινά Φώτα θα χρησιμοποιήσουμε τα δεδομένα του ραδιόμετρου *OLS* του προγράμματος *Defense Meteorological Satellite Program Operational Line Scanner* [^dmsp].
+
+## Ο δείκτης NDVI
+
+Ο Δείκτης Βλάστησης Κανονικοποιημένων Διαφορών *(Normalized Difference Vegetation Index,NDVI)*[^rouse]  αποδίδει την ζωτικότητα της βλάστησης και λαμβάνει τιμές από [-1,1]. Όταν ο δείκτης τείνει στο 1 τόσο πιο πλούσια η βλάστηση και η φωτοσυνθετική δραστηριότητα. Όταν αντιθέτως οι τιμές του δείκτη τείνουν στο -1 τότε δεν εντοπίζεται βλάστηση. 
+
+Ορίζεται από την μαθηματική σχέση:
+
+$$
+NDVI =  (NIR − VIS)/(NIR + VIS)
+$$
+όπου,
+
+*NIR*, υπέρυθρη ακτινοβολία,
+
+*VIS*, ορατή ακτινοβολία
+
+
+
+#Βασικές ρυθμίσεις περιβάλλοντος εργασίας
+
+## Ορισμός του τρέχοντος κατάλογου εργασίας/καταλόγων εξαγωγής δεδομένων:
+
+```{r}
+# working directory για το notebook αρχείο (στο notebook δεν ορίζεται με setwd()...)
+knitr::opts_knit$set(root.dir = normalizePath("./"))
+
+OUTPUTDIR <- "data" # directory για την αποθήκευση των δεδομένων
+OUTPUTDIR.OLS <- file.path(OUTPUTDIR,"ols") # directory για την αποθήκευση των δεδομένων DMSP/OLS
+OUTPUTDIR.NDVI <- file.path(OUTPUTDIR,"ndvi") # directory για την αποθήκευση των δεδομένων NDVI
+```
+
+## Εισαγωγή απαραίτητων βιβλιοθηκών
+
+```{r, message=FALSE}
+library(MODIS) # run MODIS::MODISoptions() to set or retrieve persistant package options
+library(raster)
+```
+
+
+#Ορισμός Προβολικών Συστημάτων Αναφοράς (CRS) και extent της περιοχής μελέτης
+
+```{r}
+wgs84 <- "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"
+mollweide <- "+proj=moll +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+```
+
+Η περιοχή μελέτης αφορά τμήμα της Αττικής και ορίζεται από την παρακάτω γεωγραφική έκταση (στο γεωγραφικό σύστημα αναφοράς *World Mollweide*[^moll]):
+
+```{r}
+ext <- c(1989706,2089706,4515400, 4615400) #vector (length=4; order= xmin, xmax, ymin, ymax)
+```
+
+
+# Τα δεδομένα DMSP/OLS
+
+## Λήψη δεδομένων από τον ιστότοπο Defense Meteorological Satellite Program (DMSP)
+
+```{r eval=FALSE, include=FALSE}
+
+URL <- "https://ngdc.noaa.gov/eog/data/web_data/v4composites/F182013.v4.tar"
+download.file(
+  url=URL,
+  destfile=file.path(OUTPUTDIR.OLS ,'F182013.v4.tar'), 
+  method='curl')
+
+```
+
+## Αποσυμπίεση των αρχείων
+
+```{r eval=FALSE, include=FALSE}
+untar(file.path(OUTPUTDIR.OLS, 'F182013.v4.tar'),files="F182013.v4c_web.stable_lights.avg_vis.tif.gz", exdir =OUTPUTDIR.OLS)
+R.utils::gunzip(file.path(OUTPUTDIR.OLS , 'F182013.v4c_web.stable_lights.avg_vis.tif.gz'))
+```
+
+## Ανάγνωση αρχείου σε μορφή raster και ορισμός προβολικού συστήματος
+```{r eval=FALSE, include=FALSE}
+ols4326<-raster(file.path(OUTPUTDIR.OLS,'F182013.v4c_web.stable_lights.avg_vis.tif'))
+crs(ols4326)<-wgs84 #ορισμούς προβολικού συστήματος σε WGS '84
+```
+
+## Αποκοπή μικρότερου τμήματος 
+```{r, eval=FALSE, include=FALSE}
+ext4326 <- c(22.3792,25.0928,37.3352,38.8611) # ορισμός πλαισίου περιοχής μελέτης
+crop_ols4326 <- crop(ols4326, extent(ext4326), snap='near',datatype ="INT1U") #snap='near|in|out'
+crop_ols4326<- writeRaster(crop_ols4326, filename= file.path(OUTPUTDIR.OLS,'crop_ols4326.tif'),  format="GTiff", overwrite=TRUE, datatype ="INT1U") #INT1U = 8-bit (0-255)
+
+```
+
+
+## Προβολή δεδομένων στο σύστημα MollWeide
+```{r}
+crop_ols4326<-raster(file.path(OUTPUTDIR.OLS,'crop_ols4326.tif'))
+empty.ols <- projectExtent(crop_ols4326, mollweide)
+# Adjust the cell size 
+res(empty.ols) <- 1000
+# now project
+ols_mollweide <- projectRaster(crop_ols4326, empty.ols)
+```
+
+## Αποκοπή δεδομένων στα όρια της περιοχής μελέτης και οπτικοποίηση του αποτελέσματος 
+```{r}
+rast_ols <- crop(ols_mollweide, extent(ext), snap='near',datatype ="INT1U")
+plot(rast_ols)
+```
+
+## Αποθήκευση του raster object σε αρχείο
+```{r}
+rast_ols<- writeRaster(rast_ols, filename= file.path(OUTPUTDIR.OLS,'rast_ols.tif'),  format="GTiff", overwrite=TRUE, datatype ="INT1U")
+```
+
+## Πληροφορίες για το αρχείο
+
+### Προβολικό σύστημα
+```{r}
+crs(rast_ols)
+```
+
+###  Ανάλυση (resolution) 
+
+```{r}
+res(rast_ols)
+```
+
+### Πλήθος γραμμών, στηλών, κελιών
+```{r}
+nrow(rast_ols)
+ncol(rast_ols)
+ncell(rast_ols)
+```
+
+### Γεωγραφική έκταση
+```{r}
+extent(rast_ols)
+```
+
+
+### Ελάχιστη/Μέγιστη τιμή
+
+```{r}
+minValue(rast_ols)
+maxValue(rast_ols)
+
+length(rast_ols[rast_ols==63]) #Πλήθος κελιών με τιμή 63
+
+```
+
+### Όλες οι τιμές των κελιών
+```{r}
+ols.dn <- getValues(rast_ols) # ή rast_ols[]
+
+```
+
+### Γραφική απεικόνιση αρχείου raster
+```{r}
+hist(rast_ols,
+     main="DMSP/OLS",
+     xlab="dn", 
+     ylab="Frequency",
+     col="grey",
+     breaks=6)
+```
+
+## Επιλογή και εξαγωγή δεδομένων
+
+Αναγνώριση κορεσμένων (saturated) περιοχών στα δεδομένα DMSP/OLS 
+```{r}
+saturated <- rast_ols
+saturated[rast_ols[]<63]<- NA
+plot(rast_ols)
+plot(saturated,col='red', add=TRUE, legend=F)
+
+```
+
+# Τα δεδομένα MODIS 
+
+
+Το *MODIS 13Q1* dataset παρέχει δεδομένα με διακριτική ικανότητα 250μ. τα οποία θα ανακτήσουμε και φιλτράρουμε με το πακέτο *MODIS* [^modis]
+
+Μπορούμε να ανακτήσουμε τους κωδικούς προιόντων MODIS καθώς και πληροφορίες για κάθε προϊόν μέσω του πακέτου *MODIS* και της συνάρτησης *getProduct()*
+
+```{r}
+MODIS::getProduct()
+```
+
+
+Τα δεδομένα *NDVI* είναι στην σειρά *MOD13Q1* και μπορούμε να το διαπιστώσουμε με φιλτράρισμα της πληροφορίας
+
+```{r}
+product <- "MOD13Q1"
+MODIS::getProduct(product)
+```
+
+## Checks and retrieves available MODIS collection(s) for a given product.
+
+```{r}
+MODIS::getCollection(product=product,newest=FALSE, forceCheck= T)
+MODIS::getCollection(product=product, newest=TRUE) # most recent
+
+```
+
+
+## Λήψη δορυφορικών εικόνων με το πακέτο MODIS 
+```{r, eval=FALSE, include=FALSE}
+date <-"2013.05.09"
+extent.wgs84 <- extent(projectRaster(rast_ols, crs=wgs84))
+
+modis.ndvi<-MODIS::runGdal( # run MODIS:::checkTools('GDAL') to check for GDAL library
+      job = 'ndvi',
+      product = product,
+      extent =  extent(extent.wgs84),
+      SDSstring="1", # check with getSds('*.hdf')
+      collection = '006',
+      begin = date,
+      end = date,
+      outDirPath = OUTPUTDIR,
+      overwrite= TRUE
+)
+
+```
+
+## Αναγωγή κλίμακας NDVI στο εύρος τιμών [-1,1]
+```{r}
+scalefactor<-0.0001 # βλ.Product page
+ndvi <- raster(file.path(OUTPUTDIR.NDVI ,'MOD13Q1.A2013129.250m_16_days_NDVI.tif'))*scalefactor
+plot(ndvi)
+```
+
+## Προβολή του NDVI από Sinusoidal σε Mollweide
+```{r}
+rin <- ndvi
+sinu<-"+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs"
+crs(rin) <- sinu
+
+rast_ndvi<-projectRaster(
+  rin,
+  rast_ols,
+  crs= mollweide,
+  method    = 'ngb', 
+  alignOnly = FALSE, 
+  over      = FALSE, 
+  filename  = file.path(OUTPUTDIR.NDVI ,'rast_ndvi.tif'),
+  overwrite = TRUE
+)
+
+plot(rast_ndvi)
+```
+
+
+# Υπολογισμός του δείκτη VANUI
+
+Ορίζεται από τον τύπο:
+
+$$VANUI = (1-NDVI) * NTL$$
+
+```{r}
+rast_vanui <- (1-rast_ndvi)*rast_ols
+
+```
+
+# Οπτική σύγκριση των DMSP/OLS και του δείκτη VANUI.
+
+```{r, fig.height=20, fig.width=20}
+
+par(mfrow=c(2,2))
+
+plot(rast_ols,  main="DMSP/OLS",  ylab = "DN")
+plot(rast_vanui, main="VANUI",ylab = "DN")
+
+#Ιστογράμματα συχνοτήτων
+hist(rast_ols,main="DMSP/OLS",xlab="DN", breaks=c(0,10,20,30,40,50,60,70))
+hist(rast_vanui,main="VANUI", xlab="DN", breaks = seq(0, 70, by = 10))
+
+```
+
+
+[^vanui]: Zhang, Q., Schaaf, C., Seto, K.C., 2013. The Vegetation Adjusted NTL Urban Index: A new approach to reduce saturation and increase variation in nighttime luminosity. Remote Sensing of Environment 129, 32–41. doi:10.1016/j.rse.2012.10.022,[Link](http://linkinghub.elsevier.com/retrieve/pii/S0034425712004105)
+[^modis]: Vegetation Indices 16-Day L3 Global 250m,[Link](https://lpdaac.usgs.gov/dataset_discovery/modis/modis_products_table/mod13q1)
+[^250ndvi]:MOD13Q1: MODIS/Terra Vegetation Indices 16-Day L3 Global 250 m SIN Grid V006, [Link](https://lpdaac.usgs.gov/dataset_discovery/modis/modis_products_table/mod13q1_v006)
+[^dmsp]:Defense Meteorological Satellite Program (DMSP),[Link](https://ngdc.noaa.gov/eog/dmsp.html)
+[^rouse]: Rouse J., Hass R., Schell J., Deering D. Third ERTS Symposium. NASA; 1973. Monitoring vegetation systems in the great plains with ERTS; pp. 309–317. SP-351 I.
+[^moll]: World Mollweide, [Link](https://epsg.io/?q=Mollweide)
