@@ -4,7 +4,7 @@
 Συγκεκριμένα περιλαμβάνει τον υπολογισμό του δείκτη [*Vegetation Adjusted NTL Urban
 Index (VANUI)*](http://urban.yale.edu/publications/2013/101016jrse201210022) που βασίζεται στον υπολογισμό του δείκτη βλάστησης [*NDVI*](https://en.wikipedia.org/wiki/Normalized_Difference_Vegetation_Index) και εικόνες με
 νυκτερινά φώτα. Το παράδειγμα που θα παρουσιαστεί αφορά υπολογισμό του VANUI για
-την Αθήνα χρησιμοποιώντας δεδομένα MODIS<sup>[1](#modis)</sup> για τον NDVI και δεδομένα [*DSMP/OLS*](https://ngdc.noaa.gov/eog/dmsp.html)<sup>[2](#dmsp)</sup> για νυχτερινά φώτα.
+την Αθήνα χρησιμοποιώντας δεδομένα MODIS<sup>[1](#modis)</sup> για τον NDVI και δεδομένα [*DMSP/OLS*](https://ngdc.noaa.gov/eog/dmsp.html)<sup>[2](#dmsp)</sup> για νυχτερινά φώτα.
 
 
 # Σύνοψη
