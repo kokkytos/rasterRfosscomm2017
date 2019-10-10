@@ -67,9 +67,6 @@ Eναλλακτικά το αποθετήριο είναι διαθέσιμο κ
 
 Τυχόν ερωτήσεις ή παρατηρήσεις θα υποβάλλονται στην [σχετική ενότητα του αποθετηρίου](https://github.com/kokkytos/rasterRfosscomm2017/issues).
 
-# Άδεια
-
-Το τρέχον έργο παρέχεται υπό την άδεια [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/).
 
 # Πηγές δορυφορικών εικόνων
 
